@@ -61,3 +61,16 @@ npm run build
 ## Identidade visual
 
 Marca Ribbit Frame com logo transparente fornecida pelo usuário. Paleta: verde #0E3D3A, creme #F5EFE6, roxo #9B59D1, laranja #FFB366 e grafite #222222. O nome visível e o pacote npm foram atualizados; os dados existentes continuam na pasta legada `foreditor` para preservar a biblioteca.
+
+## Geração de legendas
+
+Na aba **Legendas**, escolha um áudio ou vídeo já presente na biblioteca, o modelo large-v3-turbo, o idioma e o formato **SRT**, **VTT** ou **JSON**. Também é possível abrir essa aba pela prévia de uma mídia. O arquivo gerado vai para `Legendas` na pasta de dados do aplicativo, ou para outra pasta escolhida na interface. SRT pode ser importado no Premiere; JSON inclui intervalos por palavra.
+
+A transcrição usa **Faster-Whisper** com o modelo **large-v3-turbo** em processo Python local. No primeiro uso, o app instala o runtime gerenciado e baixa o modelo; depois funciona offline. O idioma padrão é português, e o botão **Cancelar** encerra o processo. O modelo requer mais RAM e espaço em disco que as opções anteriores.
+
+
+
+## Efeitos sonoros
+
+A aba **Efeitos sonoros** pesquisa o catálogo do MyInstants pela API pública. É possível ouvir cada resultado, navegar pelas páginas e salvar o MP3 diretamente na biblioteca local, em Downloads ou em uma pasta vinculada. A API permite até 10 consultas por minuto sem autenticação.
+

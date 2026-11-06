@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld('forEditor', Object.freeze({
   removeMedia: (id) => ipcRenderer.invoke('media:remove', id),
   copyMedia: (id) => ipcRenderer.invoke('media:copy', id),
   openMedia: (id) => ipcRenderer.invoke('media:open', id),
+  transcriptionRun: (data) => ipcRenderer.invoke('transcription:run', data),
+  transcriptionDestination: () => ipcRenderer.invoke('transcription:destination'),
+  transcriptionCancel: () => ipcRenderer.invoke('transcription:cancel'),
+  transcriptionShow: (file) => ipcRenderer.invoke('transcription:show', file),
+  onTranscriptionProgress: (callback) => { const listener = (_event, value) => callback(value); ipcRenderer.on('transcription:progress', listener); return () => ipcRenderer.removeListener('transcription:progress', listener); },
+  myinstantsSearch: (query, page) => ipcRenderer.invoke('web:myinstants-search', query, page),
+  myinstantsSave: (data) => ipcRenderer.invoke('web:myinstants-save', data),
+  myinstantsOpen: () => ipcRenderer.invoke('web:myinstants-open'),
   youtubeFormats: (url) => ipcRenderer.invoke('web:youtube-formats', url),
   youtubeDownload: (url, formatId, folderId) => ipcRenderer.invoke('web:youtube-download', { url, formatId, folderId }),
   imageSearch: (query) => ipcRenderer.invoke('web:image-search', query),
@@ -28,3 +36,5 @@ contextBridge.exposeInMainWorld('forEditor', Object.freeze({
   imageCopy: (url) => ipcRenderer.invoke('web:image-copy', url),
   onWebProgress: (callback) => { const listener = (_event, value) => callback(value); ipcRenderer.on('web:progress', listener); return () => ipcRenderer.removeListener('web:progress', listener); },
 }));
+
+

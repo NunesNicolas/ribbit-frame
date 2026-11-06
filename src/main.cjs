@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const webTools = require('./web-tools.cjs');
+const transcription = require('./transcription.cjs');
 // Preserve a biblioteca já criada antes da mudança de nome.
 const existingDataPath = path.join(app.getPath('appData'), 'foreditor');
 fsSync.mkdirSync(existingDataPath, { recursive: true });
@@ -297,6 +298,34 @@ ipcMain.handle('web:youtube-download', async (event, { url, formatId, folderId }
   send({ phase: 'saved', percent: 100, label: 'Download salvo e incluído na biblioteca.' });
   return { ...item, folderName: folderId === 'downloads' ? 'Downloads' : path.basename(folderId) };
 });
+const generatedSubtitles = new Set();
+const subtitleDestinations = new Set();
+ipcMain.handle('transcription:destination', async () => {
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'], title: 'Pasta para salvar as legendas' });
+  if (result.canceled) return null;
+  subtitleDestinations.add(result.filePaths[0]);
+  return result.filePaths[0];
+});
+ipcMain.handle('transcription:run', async (event, { id, model, language, format, destination }) => {
+  if (model !== 'large-v3-turbo' || !['auto', 'pt', 'en', 'es'].includes(language) || !['srt', 'vtt', 'json'].includes(format)) throw new Error('Opções de transcrição inválidas.');
+  const item = (await readCatalog()).find(entry => entry.id === id);
+  if (!item || !['Áudio', 'Vídeo'].includes(item.type)) throw new Error('Selecione um áudio ou vídeo da biblioteca.');
+  if (!(await fs.stat(item.path).catch(() => null))?.isFile()) throw new Error('Arquivo de origem indisponível.');
+  if (destination && !subtitleDestinations.has(destination)) throw new Error('Escolha a pasta de destino no aplicativo.');
+  const outputFolder = destination || path.join(app.getPath('userData'), 'legendas');
+  if (destination && !(await fs.stat(destination).catch(() => null))?.isDirectory()) throw new Error('Pasta de destino indisponível.');
+  const send = value => { if (!event.sender.isDestroyed()) event.sender.send('transcription:progress', value); };
+  const result = await transcription.transcribe(path.join(app.getPath('userData'), 'transcription'), item.path, outputFolder, { model, language, format }, send);
+  generatedSubtitles.add(result.path);
+  return result;
+});
+ipcMain.handle('transcription:cancel', () => transcription.cancel());
+ipcMain.handle('transcription:show', async (_event, file) => {
+  if (!generatedSubtitles.has(file) || !(await fs.stat(file).catch(() => null))?.isFile()) throw new Error('Legenda indisponível.');
+  const actual = file;
+  shell.showItemInFolder(actual);
+  return true;
+});
 const pinterestSession = () => session.fromPartition('persist:ribbit-pinterest');
 ipcMain.handle('accounts:pinterest-status', async () => {
   const cookies = await pinterestSession().cookies.get({ domain: 'pinterest.com' });
@@ -420,4 +449,89 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+
+
+ipcMain.handle('web:myinstants-open', async () => {
+  const browserSession = session.fromPartition('persist:ribbit-myinstants');
+  const browser = new BrowserWindow({ width: 1150, height: 820, title: 'MyInstants · Ribbit Frame', autoHideMenuBar: true, webPreferences: { partition: 'persist:ribbit-myinstants', contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  await fs.mkdir(mediaDirectory(), { recursive: true });
+  const pending = new Set();
+  const onDownload = (_event, item) => {
+    let source;
+    try { source = new URL(item.getURL()); } catch { item.cancel(); return; }
+    if (source.protocol !== 'https:' || !/(^|\.)myinstants\.com$/.test(source.hostname) || path.extname(item.getFilename()).toLowerCase() !== '.mp3') { item.cancel(); return; }
+    const filename = path.basename(item.getFilename()).replace(/[<>:"/\\|?*\x00-\x1f]/g, '').slice(0, 100) || 'efeito.mp3';
+    const target = path.join(mediaDirectory(), `${crypto.randomUUID().slice(0, 8)}-${filename}`);
+    item.setSavePath(target);
+    const task = new Promise(resolve => item.once('done', async (_event, state) => {
+        if (state === 'completed') {
+          try { await catalogOperation(() => addDownloaded(target, filename, source.href)); }
+          catch { await fs.rm(target, { force: true }); }
+        }
+        resolve();
+      }));
+    pending.add(task); task.finally(() => pending.delete(task));
+  };
+  browserSession.on('will-download', onDownload);
+  try {
+    await browser.loadURL('https://www.myinstants.com/pt/index/br/');
+    await new Promise(resolve => browser.once('closed', resolve));
+    await Promise.allSettled([...pending]);
+    return true;
+  } finally {
+    browserSession.removeListener('will-download', onDownload);
+    if (!browser.isDestroyed()) browser.destroy();
+  }
+});
+
+
+
+
+
+const myinstantsResults = new Map();
+ipcMain.handle('web:myinstants-search', async (_event, query, page = 1) => {
+  query = String(query || '').trim().slice(0, 100);
+  if (query.length < 2 || !Number.isInteger(page) || page < 1 || page > 100) throw new Error('Busca inválida.');
+  const url = new URL('https://www.myinstants.com/api/v1/instants/');
+  url.searchParams.set('name', query); url.searchParams.set('page', String(page));
+  const response = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { Accept: 'application/json', 'User-Agent': 'Ribbit Frame' } });
+  if (response.status === 429) throw new Error('Limite do MyInstants atingido. Aguarde um minuto e tente novamente.');
+  if (!response.ok) throw new Error(`Busca no MyInstants: HTTP ${response.status}.`);
+  const raw = await response.text();
+  if (raw.length > 1000000) throw new Error('Resposta do MyInstants muito grande.');
+  const data = JSON.parse(raw);
+  if (myinstantsResults.size > 500) myinstantsResults.clear();
+  const sounds = (Array.isArray(data.results) ? data.results : []).flatMap(item => {
+    try {
+      const address = new URL(item.sound);
+      if (address.protocol !== 'https:' || address.hostname !== 'www.myinstants.com' || !address.pathname.startsWith('/media/sounds/') || !address.pathname.toLowerCase().endsWith('.mp3')) return [];
+      const sound = { name: String(item.name || '').slice(0, 120), url: address.href, slug: String(item.slug || '').slice(0, 120) };
+      myinstantsResults.set(sound.url, sound);
+      return [sound];
+    } catch { return []; }
+  });
+  return { sounds, count: Number(data.count) || 0, hasMore: Boolean(data.next), page };
+});
+ipcMain.handle('web:myinstants-save', async (_event, { url, folderId }) => {
+  const sound = myinstantsResults.get(url);
+  if (!sound) throw new Error('Pesquise o som antes de salvá-lo.');
+  const roots = await readFolders();
+  if (folderId !== 'downloads' && !roots.includes(folderId)) throw new Error('Pasta de destino inválida.');
+  const destination = folderId === 'downloads' ? mediaDirectory() : folderId;
+  if (folderId !== 'downloads' && !(await fs.stat(destination).catch(() => null))?.isDirectory()) throw new Error('Pasta de destino indisponível.');
+  const response = await fetch(sound.url, { signal: AbortSignal.timeout(30000), headers: { 'User-Agent': 'Ribbit Frame' } });
+  if (!response.ok || new URL(response.url).hostname !== 'www.myinstants.com') throw new Error('Não foi possível baixar o MP3.');
+  if (Number(response.headers.get('content-length')) > 20000000) throw new Error('MP3 excede 20 MB.');
+  const chunks = []; let size = 0;
+  for await (const chunk of response.body) { size += chunk.length; if (size > 20000000) throw new Error('MP3 excede 20 MB.'); chunks.push(chunk); }
+  const bytes = Buffer.concat(chunks);
+  if (bytes.subarray(0, 3).toString() !== 'ID3' && !(bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)) throw new Error('O arquivo recebido não é MP3.');
+  await fs.mkdir(destination, { recursive: true });
+  const filename = (sound.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().slice(0, 90) || 'Efeito sonoro') + '.mp3';
+  const file = path.join(destination, `${crypto.randomUUID().slice(0, 8)}-${filename}`);
+  await fs.writeFile(file, bytes, { flag: 'wx' });
+  try { return await catalogOperation(() => addDownloaded(file, filename, sound.url, folderId === 'downloads' ? null : folderId)); }
+  catch (error) { await fs.rm(file, { force: true }); throw error; }
+});
 

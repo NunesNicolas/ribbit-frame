@@ -19,3 +19,9 @@ A aplicação copia pixels de imagens para o clipboard do Windows via Electron; 
 ## Segurança Electron
 
 Manter `nodeIntegration: false`, `contextIsolation: true` e sandbox. Expor ao renderer apenas operações pequenas via preload/IPC. Não aceitar caminhos arbitrários do renderer para leitura/escrita.
+
+## Legendas locais
+
+A aba de legendas chama `src/transcription.cjs` pelo preload/IPC. O backend valida mídia, formato, idioma, modelo e destino. Um processo Python local executa `src/transcribe.py` com Faster-Whisper e o modelo large-v3-turbo em CPU int8. O runtime e o modelo são preparados no primeiro uso e ficam na pasta de dados do app; depois funciona offline. Há uma transcrição por vez. A pasta padrão das legendas é `app.getPath('userData')/legendas`.
+
+
