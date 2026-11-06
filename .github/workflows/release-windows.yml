@@ -28,6 +28,11 @@ jobs:
       - name: Instalar dependências
         run: npm ci --no-audit --no-fund
 
+      - name: Registrar número da build
+        shell: pwsh
+        run: |
+          @{ build = [int]$env:GITHUB_RUN_NUMBER } | ConvertTo-Json -Compress | Set-Content -Encoding utf8 src/build-info.json
+
       - name: Gerar instalador
         run: npm run dist
 
@@ -51,3 +56,4 @@ jobs:
           $installer = "release/Ribbit-Frame-Setup-$version.exe"
           $portable = "release/Ribbit-Frame-Portable-$version.zip"
           gh release create $tag $installer $portable --target $env:GITHUB_SHA --title "Ribbit Frame $version (build ${{ github.run_number }})" --notes "Build automático da branch main. Instalador Windows e versão portátil ZIP."
+

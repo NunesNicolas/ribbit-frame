@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('forEditor', Object.freeze({
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdateProgress: (callback) => { const listener = (_event, value) => callback(value); ipcRenderer.on('update:progress', listener); return () => ipcRenderer.removeListener('update:progress', listener); },
   listMedia: (force = false) => ipcRenderer.invoke('media:list', force),
   listFolders: () => ipcRenderer.invoke('media:folders'),
   chooseDestination: () => ipcRenderer.invoke('media:choose-destination'),
@@ -36,5 +39,6 @@ contextBridge.exposeInMainWorld('forEditor', Object.freeze({
   imageCopy: (url) => ipcRenderer.invoke('web:image-copy', url),
   onWebProgress: (callback) => { const listener = (_event, value) => callback(value); ipcRenderer.on('web:progress', listener); return () => ipcRenderer.removeListener('web:progress', listener); },
 }));
+
 
 

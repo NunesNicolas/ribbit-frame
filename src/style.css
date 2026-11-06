@@ -123,3 +123,10 @@
 @media (max-width: 680px) { .sound-result { grid-template-columns: 1fr; } }
 :root[data-theme="light"] .sound-result { background:#fffaf5; border-color:#ddd2c8; color:#153c38; }
 :root[data-theme="dark"] .sound-result { background:#202328; border-color:#3a3e43; color:#ebedf0; }
+
+.update-notice { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.7rem 1rem; margin:.7rem 0; border:1px solid #9b59d1; border-radius:12px; background:#f4eafa; color:#3f2454; }
+.update-notice > div { display:flex; flex-direction:column; gap:.15rem; min-width:0; }
+.update-notice strong, .update-notice span { overflow-wrap:anywhere; }
+.update-notice progress { width:min(240px,40%); accent-color:#9b59d1; }
+:root[data-theme="dark"] .update-notice { background:#30243a; color:#f2e6fa; border-color:#754b92; }
+@media (max-width:680px) { .update-notice { flex-wrap:wrap; } .update-notice progress { width:100%; } }

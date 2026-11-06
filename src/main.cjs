@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const webTools = require('./web-tools.cjs');
 const transcription = require('./transcription.cjs');
+const updater = require('./updater.cjs');
 // Preserve a biblioteca já criada antes da mudança de nome.
 const existingDataPath = path.join(app.getPath('appData'), 'foreditor');
 fsSync.mkdirSync(existingDataPath, { recursive: true });
@@ -537,3 +538,27 @@ ipcMain.handle('web:myinstants-save', async (_event, { url, folderId }) => {
 });
 
 
+
+
+const currentBuild = require('./build-info.json').build;
+let updateBusy = false;
+ipcMain.handle('update:check', async () => {
+  if (!app.isPackaged) return null;
+  const update = await updater.check(app.getVersion(), currentBuild);
+  return update && { tag: update.tag, size: update.size, page: update.page };
+});
+ipcMain.handle('update:install', async (event) => {
+  if (!app.isPackaged) throw new Error('Atualizações disponíveis apenas no aplicativo instalado.');
+  if (updateBusy) throw new Error('Atualização já está em andamento.');
+  updateBusy = true;
+  try {
+    const update = await updater.check(app.getVersion(), currentBuild);
+    if (!update) throw new Error('Nenhuma atualização disponível.');
+    const send = percent => { if (!event.sender.isDestroyed()) event.sender.send('update:progress', percent); };
+    const installer = await updater.download(update, path.join(app.getPath('userData'), 'updates'), send);
+    const error = await shell.openPath(installer);
+    if (error) throw new Error(`Não foi possível abrir o instalador: ${error}`);
+    setTimeout(() => app.quit(), 1500);
+    return true;
+  } finally { updateBusy = false; }
+});

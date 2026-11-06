@@ -10,7 +10,7 @@
     "start": "concurrently -k \"npm:dev\" \"npm:electron\"",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "dist": "npm run build && electron-builder --win nsis"
+    "dist": "npm run build && electron-builder --win nsis --publish never"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -59,3 +59,4 @@
     "electronDist": "node_modules/electron/dist"
   }
 }
+

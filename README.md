@@ -84,3 +84,7 @@ Os dados da biblioteca ficam em `%APPDATA%\foreditor` e são preservados ao atua
 ## Releases automáticas
 
 O workflow `.github/workflows/release-windows.yml` roda a cada push para `main` e também pode ser iniciado manualmente em **Actions**. Em um runner Windows, ele executa `npm ci`, gera o instalador NSIS, compacta `release/win-unpacked` e publica ambos na aba **Releases** do repositório. Cada execução recebe uma tag única no formato `v<versão>-build.<número da execução>`. O ZIP contém a pasta portátil `win-unpacked`; abra `Ribbit Frame.exe` dentro dela. Não são necessários segredos adicionais: o workflow usa o `GITHUB_TOKEN` do próprio repositório com permissão de escrita em conteúdos. Para publicar uma nova versão numerada, atualize `version` em `package.json` e `package-lock.json` antes do push.
+
+## Atualizações pelo aplicativo
+
+Ao abrir a versão instalada, o Ribbit Frame consulta a release mais recente de `NunesNicolas/ribbit-frame` no GitHub. Se houver uma build mais nova, mostra um aviso com **Instalar atualização**. O app só baixa o instalador após o clique, verifica o SHA-256 informado pelo GitHub, abre o instalador e encerra o processo para permitir a atualização. Os arquivos da biblioteca em `%APPDATA%\foreditor` permanecem no lugar. A versão de desenvolvimento não consulta atualizações. O workflow grava o número da build no pacote para que o app não ofereça a mesma release novamente.
