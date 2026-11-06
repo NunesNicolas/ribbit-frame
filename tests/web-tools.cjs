@@ -12,3 +12,6 @@ assert.deepEqual(options.slice(-3).map(option => option.id), ['audio:mp3', 'audi
 
 assert.equal(progressFromLine('[download]  42.3% of 10MiB at 2MiB/s').percent, 42.3);
 assert.equal(progressFromLine('[Merger] Merging formats').phase, 'processing');
+
+const { image } = require('../src/web-tools.cjs');
+assert.rejects(image('https://localhost/image.png', '.', ['localhost']), /Endereço de imagem não permitido/);

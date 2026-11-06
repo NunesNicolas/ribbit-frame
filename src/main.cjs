@@ -11,7 +11,7 @@ fsSync.mkdirSync(existingDataPath, { recursive: true });
 app.setPath('userData', existingDataPath);
 app.setName('Ribbit Frame');
 
-protocol.registerSchemesAsPrivileged([{ scheme: 'foreditor', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: 'foreditor', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 const extensions = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv', '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac']);
 const mediaType = (file) => {
@@ -130,18 +130,30 @@ ipcMain.handle('taxonomy:remove', (_event, { kind, name }) => catalogOperation(a
   return root;
 });
 ipcMain.handle('media:folders', async () => [{ id: 'native', name: 'Nativa', kind: 'native', path: mediaDirectory() }, { id: 'downloads', name: 'Downloads', kind: 'downloads', path: mediaDirectory() }, ...(await readFolders()).map(root => ({ id: root, name: path.basename(root), kind: 'linked', path: root }))]);
-ipcMain.handle('media:list', async () => {
-  const items = await catalogOperation(syncFolders);
-  return Promise.all(items.map(async (item) => {
-    try {
-      const stat = await fs.stat(item.path);
-      return { ...item, missing: false, url: `foreditor://media/${encodeURIComponent(item.id)}`, size: stat.size, modifiedAt: stat.mtimeMs };
-    } catch {
-      return { ...item, missing: true, url: null, size: 0, modifiedAt: null };
+let lastFolderSync = 0;
+ipcMain.handle('media:list', async (_event, force = false) => {
+  const items = await catalogOperation(async () => {
+    if (!force && Date.now() - lastFolderSync < 30000) return readCatalog();
+    const catalog = await syncFolders();
+    lastFolderSync = Date.now();
+    return catalog;
+  });
+  const output = new Array(items.length);
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(16, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      const item = items[index];
+      try {
+        const stat = await fs.stat(item.path);
+        output[index] = { ...item, missing: false, url: 'foreditor://media/' + encodeURIComponent(item.id), size: stat.size, modifiedAt: stat.mtimeMs };
+      } catch {
+        output[index] = { ...item, missing: true, url: null, size: 0, modifiedAt: null };
+      }
     }
   }));
-});
-ipcMain.handle('media:copy', async (_event, id) => {
+  return output;
+});ipcMain.handle('media:copy', async (_event, id) => {
   const item = (await readCatalog()).find((entry) => entry.id === id);
   if (!item || item.type !== 'Imagem') throw new Error('Imagem não encontrada no catálogo.');
   const image = nativeImage.createFromPath(item.path);
@@ -308,10 +320,12 @@ ipcMain.handle('accounts:pinterest-open', async (_event, query) => {
 });
 let imageSearchUrls = new Set();
 let pinterestWindow = null;
+let pinterestIdleTimer = null;
 let pinterestQuery = '';
 let pinterestSeen = new Map();
 let pinterestQueue = Promise.resolve();
 async function pinterestResults(query, more = false) {
+  clearTimeout(pinterestIdleTimer);
   if (!more || !pinterestWindow || pinterestWindow.isDestroyed() || query !== pinterestQuery) {
     if (pinterestWindow && !pinterestWindow.isDestroyed()) pinterestWindow.destroy();
     pinterestWindow = new BrowserWindow({ show: false, webPreferences: { partition: 'persist:ribbit-pinterest', contextIsolation: true, nodeIntegration: false, sandbox: true } });
@@ -332,6 +346,7 @@ async function pinterestResults(query, more = false) {
       }
       await pinterestWindow.webContents.executeJavaScript('window.scrollTo(0, document.scrollingElement.scrollHeight)');
     }
+    pinterestIdleTimer = setTimeout(() => { if (pinterestWindow && !pinterestWindow.isDestroyed()) pinterestWindow.destroy(); pinterestWindow = null; }, 60000);
     return { source: 'Pinterest', images: [...added.values()], hasMore: added.size > 0 && pinterestSeen.size < 300 };
   } catch (error) { return { source: 'Pinterest', images: [], error: error.message, hasMore: false }; }
 }
@@ -385,9 +400,13 @@ ipcMain.handle('web:image-copy', async (_event, url) => {
   } finally { await fs.rm(file, { force: true }); }
 });
 function createWindow() {
-  app.commandLine.appendSwitch('disable-gpu');
   app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData'), 'Cache'));
-  const window = new BrowserWindow({ width: 1280, height: 820, minWidth: 760, minHeight: 560, backgroundColor: '#F5EFE6', icon: path.join(__dirname, 'assets/ribbit-frame-icon.png'), title: 'Ribbit Frame', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  const window = new BrowserWindow({ width: 1280, height: 820, minWidth: 620, minHeight: 460, backgroundColor: '#F5EFE6', icon: path.join(__dirname, 'assets/ribbit-frame-icon.png'), title: 'Ribbit Frame', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', (event, url) => {
+    const expected = app.isPackaged ? require('node:url').pathToFileURL(path.join(__dirname, '../dist/index.html')).href : 'http://127.0.0.1:5174/';
+    if (url !== expected) event.preventDefault();
+  });
   if (app.isPackaged) window.loadFile(path.join(__dirname, '../dist/index.html'));
   else window.loadURL('http://127.0.0.1:5174');
 }

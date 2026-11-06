@@ -1,6 +1,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const dns = require('node:dns/promises');
+const net = require('node:net');
 const { spawn } = require('node:child_process');
 const ffmpeg = require('./ffmpeg.cjs');
 
@@ -9,12 +11,26 @@ const release = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
 const githubHosts = ['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'];
 function safeUrl(value, hosts) {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || !hosts.includes(url.hostname)) throw new Error('Endereço não permitido.');
+  if (url.protocol !== 'https:' || url.username || url.password || !hosts.includes(url.hostname)) throw new Error('Endereço não permitido.');
   return url.href;
 }
-async function fetchBytes(url, limit, hosts) {
+function isPrivateAddress(address) {
+  if (net.isIP(address) === 4) {
+    const [a, b] = address.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+  }
+  const value = address.toLowerCase();
+  return value === '::1' || value === '::' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe80:') || value.startsWith('::ffff:');
+}
+async function requirePublicHost(hostname) {
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local') || net.isIP(hostname)) throw new Error('Endereço de imagem não permitido.');
+  const addresses = await dns.lookup(hostname, { all: true });
+  if (!addresses.length || addresses.some(item => isPrivateAddress(item.address))) throw new Error('Endereço de imagem não permitido.');
+}
+async function fetchBytes(url, limit, hosts, publicOnly = false) {
   for (let i = 0; i < 4; i++) {
     safeUrl(url, hosts);
+    if (publicOnly) await requirePublicHost(new URL(url).hostname);
     const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(30000) });
     if (response.status >= 300 && response.status < 400) { url = new URL(response.headers.get('location'), url).href; continue; }
     if (!response.ok) throw new Error(`Servidor respondeu HTTP ${response.status}.`);
@@ -133,17 +149,17 @@ function extractImages(html, source) {
     } catch { return false; }
   }).slice(0, 60);
 }
-async function searchImages(query, pinterestCookie = '') {
+async function searchImages(query) {
   query = String(query || '').trim().slice(0, 120);
   if (query.length < 2) throw new Error('Digite ao menos duas letras.');
   const sources = [
     { source: 'Google Imagens', url: 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(query), host: 'www.google.com' },
-    { source: 'Pinterest', url: 'https://www.pinterest.com/search/pins/?q=' + encodeURIComponent(query), host: 'www.pinterest.com' },
+
   ];
   const results = await Promise.all(sources.map(async ({ source, url, host }) => {
     try {
       const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36', 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8' };
-      if (source === 'Pinterest' && pinterestCookie) headers.Cookie = pinterestCookie;
+
       const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
       if (!response.ok) throw Error('HTTP ' + response.status);
       const html = (await response.text()).slice(0, 6000000);
@@ -161,7 +177,7 @@ async function image(url, destination, allowedHosts = ['i.pinimg.com']) {
   url = safeUrl(url, allowedHosts);
   const extension = path.extname(new URL(url).pathname).toLowerCase();
   if (!['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) throw new Error('Formato de imagem inválido.');
-  const result = await fetchBytes(url, 25000000, allowedHosts);
+  const result = await fetchBytes(url, 25000000, allowedHosts, true);
   if (!result.type.startsWith('image/')) throw new Error('O endereço não retornou uma imagem.');
   await fs.mkdir(destination, { recursive: true });
   const file = path.join(destination, crypto.randomUUID() + extension);

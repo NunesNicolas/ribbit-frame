@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('forEditor', Object.freeze({
-  listMedia: () => ipcRenderer.invoke('media:list'),
+  listMedia: (force = false) => ipcRenderer.invoke('media:list', force),
   listFolders: () => ipcRenderer.invoke('media:folders'),
   chooseDestination: () => ipcRenderer.invoke('media:choose-destination'),
   listPeople: () => ipcRenderer.invoke('people:list'),
