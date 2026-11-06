@@ -1,0 +1,27 @@
+{
+  "name": "ribbit-frame",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Biblioteca local de mídias para edição de vídeo",
+  "main": "src/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174",
+    "electron": "wait-on tcp:5174 && electron .",
+    "start": "concurrently -k \"npm:dev\" \"npm:electron\"",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^33.2.1",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  },
+  "productName": "Ribbit Frame"
+}
