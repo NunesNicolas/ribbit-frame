@@ -74,3 +74,13 @@ A transcrição usa **Faster-Whisper** com o modelo **large-v3-turbo** em proces
 
 A aba **Efeitos sonoros** pesquisa o catálogo do MyInstants pela API pública. É possível ouvir cada resultado, navegar pelas páginas e salvar o MP3 diretamente na biblioteca local, em Downloads ou em uma pasta vinculada. A API permite até 10 consultas por minuto sem autenticação.
 
+
+## Instalador para Windows
+
+O projeto usa `electron-builder` para gerar um instalador NSIS de 64 bits. Depois de `npm install`, execute `npm run dist` na raiz do repositório. O arquivo resultante fica em `release/Ribbit-Frame-Setup-<versão>.exe`. O instalador permite escolher a pasta de instalação e cria atalhos no menu Iniciar e na área de trabalho. Não exige Node.js, Python nem ferramentas de build no computador de quem instala.
+
+Os dados da biblioteca ficam em `%APPDATA%\foreditor` e são preservados ao atualizar ou desinstalar. O instalador não publica arquivos automaticamente; a distribuição pode ser feita anexando o `.exe` a uma release do GitHub. A versão deve ser alterada em `package.json` antes de gerar uma nova release. Como o instalador ainda não é assinado digitalmente, o Windows pode mostrar um aviso do SmartScreen.
+
+## Releases automáticas
+
+O workflow `.github/workflows/release-windows.yml` roda a cada push para `main` e também pode ser iniciado manualmente em **Actions**. Em um runner Windows, ele executa `npm ci`, gera o instalador NSIS, compacta `release/win-unpacked` e publica ambos na aba **Releases** do repositório. Cada execução recebe uma tag única no formato `v<versão>-build.<número da execução>`. O ZIP contém a pasta portátil `win-unpacked`; abra `Ribbit Frame.exe` dentro dela. Não são necessários segredos adicionais: o workflow usa o `GITHUB_TOKEN` do próprio repositório com permissão de escrita em conteúdos. Para publicar uma nova versão numerada, atualize `version` em `package.json` e `package-lock.json` antes do push.

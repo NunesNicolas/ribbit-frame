@@ -31,3 +31,5 @@ Desktop.ini
 
 # Locally downloaded helper binaries
 /tools/
+
+.npm-cache/

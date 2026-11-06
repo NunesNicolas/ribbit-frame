@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, protocol, net, clipboard, nativeImage, shell, session } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol, net, clipboard, nativeImage, shell, session, Menu } = require('electron');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const path = require('node:path');
@@ -440,6 +440,7 @@ function createWindow() {
   else window.loadURL('http://127.0.0.1:5174');
 }
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   protocol.handle('foreditor', async (request) => {
     const id = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''));
     const item = (await readCatalog()).find((entry) => entry.id === id);
@@ -534,4 +535,5 @@ ipcMain.handle('web:myinstants-save', async (_event, { url, folderId }) => {
   try { return await catalogOperation(() => addDownloaded(file, filename, sound.url, folderId === 'downloads' ? null : folderId)); }
   catch (error) { await fs.rm(file, { force: true }); throw error; }
 });
+
 

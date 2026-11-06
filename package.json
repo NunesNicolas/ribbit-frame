@@ -9,7 +9,8 @@
     "electron": "wait-on tcp:5174 && electron .",
     "start": "concurrently -k \"npm:dev\" \"npm:electron\"",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "dist": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -21,7 +22,40 @@
     "concurrently": "^9.1.2",
     "electron": "^33.2.1",
     "vite": "^6.0.7",
-    "wait-on": "^8.0.1"
+    "wait-on": "^8.0.1",
+    "electron-builder": "26.18.0"
   },
-  "productName": "Ribbit Frame"
+  "productName": "Ribbit Frame",
+  "build": {
+    "appId": "com.ribbitframe.desktop",
+    "productName": "Ribbit Frame",
+    "artifactName": "Ribbit-Frame-Setup-${version}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/**/*",
+      "package.json",
+      "!src/**/*.pyc",
+      "!src/**/__pycache__/**"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/ribbit-frame.ico"
+    },
+    "nsis": {
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "perMachine": false,
+      "shortcutName": "Ribbit Frame",
+      "allowToChangeInstallationDirectory": true,
+      "oneClick": false,
+      "createDesktopShortcut": true
+    },
+    "electronDist": "node_modules/electron/dist"
+  }
 }
