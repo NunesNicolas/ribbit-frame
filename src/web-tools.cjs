@@ -41,41 +41,58 @@ async function fetchBytes(url, limit, hosts, publicOnly = false) {
   }
   throw new Error('Redirecionamentos demais.');
 }
+async function fetchVerifiedExecutable(url, sumsUrl, checksumPattern, file, hosts) {
+  const sums = (await fetchBytes(sumsUrl, 100000, hosts)).data.toString();
+  const expected = sums.split(/\r?\n/).find(row => checksumPattern.test(row))?.trim().split(/\s+/)[0]?.toLowerCase();
+  if (!expected || !/^[a-f0-9]{64}$/.test(expected)) throw new Error('Checksum da ferramenta auxiliar não encontrado.');
+  const temporary = file + '.' + crypto.randomUUID() + '.tmp';
+  try {
+    for (let i = 0; i < 4; i++) {
+      safeUrl(url, hosts);
+      const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(300000) });
+      if (response.status >= 300 && response.status < 400) {
+        url = new URL(response.headers.get('location'), url).href;
+        continue;
+      }
+      if (!response.ok) throw new Error(`Servidor respondeu HTTP ${response.status}.`);
+      const hash = crypto.createHash('sha256');
+      const output = await fs.open(temporary, 'wx');
+      try {
+        for await (const chunk of response.body) {
+          hash.update(chunk);
+          let offset = 0;
+          while (offset < chunk.length) offset += (await output.write(chunk, offset, chunk.length - offset)).bytesWritten;
+        }
+      } finally { await output.close(); }
+      if (hash.digest('hex') !== expected) throw new Error('Verificação SHA-256 da ferramenta auxiliar falhou.');
+      await fs.rename(temporary, file);
+      return file;
+    }
+    throw new Error('Redirecionamentos demais.');
+  } catch (error) {
+    await fs.rm(temporary, { force: true });
+    throw error;
+  }
+}
 async function executable(directory) {
   if (process.platform !== 'win32') throw new Error('O downloader integrado está disponível no Windows.');
   const file = path.join(directory, `yt-dlp-${version}.exe`);
   try { await fs.access(file); return file; } catch {}
   await fs.mkdir(directory, { recursive: true });
-  const [binary, sums] = await Promise.all([fetchBytes(release + 'yt-dlp.exe', 40000000, githubHosts), fetchBytes(release + 'SHA2-256SUMS', 100000, githubHosts)]);
-  const line = sums.data.toString().split(/\r?\n/).find(row => /\s\*?yt-dlp\.exe$/.test(row));
-  if (!line || line.trim().split(/\s+/)[0].toLowerCase() !== crypto.createHash('sha256').update(binary.data).digest('hex')) throw new Error('Verificação SHA-256 do yt-dlp falhou.');
-  const temporary = file + '.tmp';
-  await fs.writeFile(temporary, binary.data);
-  await fs.rename(temporary, file);
-  return file;
+  return fetchVerifiedExecutable(release + 'yt-dlp.exe', release + 'SHA2-256SUMS', /\s\*?yt-dlp\.exe$/, file, githubHosts);
 }
 const nodeRelease = 'https://nodejs.org/dist/v22.16.0/';
 async function nodeExecutable(directory) {
   const file = path.join(directory, 'node-v22.16.0.exe');
   try { await fs.access(file); return file; } catch {}
   await fs.mkdir(directory, { recursive: true });
-  const [binary, sums] = await Promise.all([
-    fetchBytes(nodeRelease + 'win-x64/node.exe', 70000000, ['nodejs.org']),
-    fetchBytes(nodeRelease + 'SHASUMS256.txt', 100000, ['nodejs.org'])
-  ]);
-  const line = sums.data.toString().split(/\r?\n/).find(row => /\s+win-x64\/node\.exe$/.test(row));
-  const actual = crypto.createHash('sha256').update(binary.data).digest('hex');
-  if (!line || line.trim().split(/\s+/)[0].toLowerCase() !== actual) throw new Error('Verificação SHA-256 do runtime JavaScript falhou.');
-  const temporary = file + '.tmp';
-  await fs.writeFile(temporary, binary.data);
-  await fs.rename(temporary, file);
-  return file;
+  return fetchVerifiedExecutable(nodeRelease + 'win-x64/node.exe', nodeRelease + 'SHASUMS256.txt', /\s+win-x64\/node\.exe$/, file, ['nodejs.org']);
 }
 function run(exe, args, progress = () => {}, capture = true) {
   return new Promise((resolve, reject) => {
     const child = spawn(exe, ['--no-playlist', '--no-config', '--no-update', ...args], { cwd: path.dirname(exe), env: { ...process.env, TEMP: path.dirname(exe), TMP: path.dirname(exe) }, windowsHide: true });
     let output = '', errors = '';
-    const timer = setTimeout(() => child.kill(), capture ? 300000 : 3600000);
+    const timer = capture ? setTimeout(() => child.kill(), 300000) : null;
     child.stdout.on('data', chunk => { if (capture) { output += chunk; if (output.length > 3000000) child.kill(); } progress(String(chunk)); });
     child.stderr.on('data', chunk => { errors = (errors + chunk).slice(-2000); });
     child.on('error', reject);
