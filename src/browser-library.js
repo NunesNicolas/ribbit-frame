@@ -35,7 +35,7 @@ async function getItem(id) {
 }
 
 export const browserLibrary = {
-  listFolders: async () => [{ id: 'native', name: 'Nativa', kind: 'native', path: '' }, { id: 'downloads', name: 'Downloads', kind: 'downloads', path: '' }],
+  listFolders: async () => [{ id: 'local', name: 'Local', kind: 'local', path: '' }],
   listPeople: async () => JSON.parse(localStorage.getItem('foreditor-people') || '[]'),
   listTaxonomy: async () => {
     const items = await transact('readonly', store => store.getAll());

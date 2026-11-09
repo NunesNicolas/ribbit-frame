@@ -131,7 +131,17 @@ ipcMain.handle('taxonomy:remove', (_event, { kind, name }) => catalogOperation(a
   await catalogOperation(async () => { const folders = await readFolders(); if (!folders.some(folder => folder.toLowerCase() === root.toLowerCase())) { folders.push(root); await writeFolders(folders); } });
   return root;
 });
-ipcMain.handle('media:folders', async () => [{ id: 'native', name: 'Nativa', kind: 'native', path: mediaDirectory() }, { id: 'downloads', name: 'Downloads', kind: 'downloads', path: mediaDirectory() }, ...(await readFolders()).map(root => ({ id: root, name: path.basename(root), kind: 'linked', path: root }))]);
+ipcMain.handle('media:folders', async () => [{ id: 'local', name: 'Local', kind: 'local', path: mediaDirectory() }, ...(await readFolders()).map(root => ({ id: root, name: path.basename(root), kind: 'linked', path: root }))]);
+ipcMain.handle('media:remove-folder', (_event, root) => catalogOperation(async () => {
+  if (typeof root !== 'string') throw new Error('Pasta inválida.');
+  const folders = await readFolders();
+  if (!folders.includes(root)) throw new Error('Pasta vinculada não encontrada.');
+  await writeFolders(folders.filter(folder => folder !== root));
+  const catalog = await readCatalog();
+  await writeCatalog(catalog.filter(item => item.folderRoot !== root));
+  lastFolderSync = 0;
+  return true;
+}));
 let lastFolderSync = 0;
 ipcMain.handle('media:list', async (_event, force = false) => {
   const items = await catalogOperation(async () => {
@@ -289,15 +299,15 @@ async function addDownloaded(sourcePath, displayName, sourceUrl, folderRoot = nu
 ipcMain.handle('web:youtube-formats', (_event, url) => webTools.formats(url, path.join(app.getPath('userData'), 'tools')));
 ipcMain.handle('web:youtube-download', async (event, { url, formatId, folderId }) => {
   const roots = await readFolders();
-  if (folderId !== 'downloads' && !roots.includes(folderId)) throw new Error('Selecione uma pasta de destino válida.');
-  const destination = folderId === 'downloads' ? mediaDirectory() : folderId;
-  if (folderId !== 'downloads' && !(await fs.stat(destination).catch(() => null))?.isDirectory()) throw new Error('Pasta de destino indisponível.');
+  if (folderId !== 'local' && folderId !== 'downloads' && !roots.includes(folderId)) throw new Error('Selecione uma pasta de destino válida.');
+  const destination = (folderId === 'local' || folderId === 'downloads') ? mediaDirectory() : folderId;
+  if (folderId !== 'local' && folderId !== 'downloads' && !(await fs.stat(destination).catch(() => null))?.isDirectory()) throw new Error('Pasta de destino indisponível.');
   const send = value => { if (!event.sender.isDestroyed()) event.sender.send('web:progress', value); };
   send({ phase: 'preparing', percent: null, label: 'Preparando ferramentas e destino…' });
   const result = await webTools.download(url, formatId, toolsDirectory(), destination, send);
-  const item = await catalogOperation(() => addDownloaded(result.path, result.name, url, folderId === 'downloads' ? null : folderId));
+  const item = await catalogOperation(() => addDownloaded(result.path, result.name, url, (folderId === 'local' || folderId === 'downloads') ? null : folderId));
   send({ phase: 'saved', percent: 100, label: 'Download salvo e incluído na biblioteca.' });
-  return { ...item, folderName: folderId === 'downloads' ? 'Downloads' : path.basename(folderId) };
+  return { ...item, folderName: (folderId === 'local' || folderId === 'downloads') ? 'Local' : path.basename(folderId) };
 });
 const generatedSubtitles = new Set();
 const subtitleDestinations = new Set();
@@ -401,14 +411,14 @@ ipcMain.handle('web:image-more', async (_event, query) => {
 });ipcMain.handle('web:image-save', async (_event, { url, folderId, person, tags }) => {
   if (!imageSearchUrls.has(url)) throw new Error('Faça a busca antes de salvar esta imagem.');
   const roots = await readFolders();
-  if (folderId !== 'downloads' && !roots.includes(folderId)) throw new Error('Pasta de destino inválida.');
+  if (folderId !== 'local' && folderId !== 'downloads' && !roots.includes(folderId)) throw new Error('Pasta de destino inválida.');
   if (typeof person !== 'string' || person.length > 120 || !Array.isArray(tags) || tags.length > 100 || tags.some(tag => typeof tag !== 'string' || tag.length > 120)) throw new Error('Classificação inválida.');
-  const destination = folderId === 'downloads' ? mediaDirectory() : folderId;
-  if (folderId !== 'downloads' && !(await fs.stat(destination).catch(() => null))?.isDirectory()) throw new Error('Pasta de destino indisponível.');
+  const destination = (folderId === 'local' || folderId === 'downloads') ? mediaDirectory() : folderId;
+  if (folderId !== 'local' && folderId !== 'downloads' && !(await fs.stat(destination).catch(() => null))?.isDirectory()) throw new Error('Pasta de destino indisponível.');
   const file = await webTools.image(url, destination, [new URL(url).hostname]);
   try {
     const item = await catalogOperation(async () => {
-      const saved = await addDownloaded(file, path.basename(new URL(url).pathname), url, folderId === 'downloads' ? null : folderId);
+      const saved = await addDownloaded(file, path.basename(new URL(url).pathname), url, (folderId === 'local' || folderId === 'downloads') ? null : folderId);
       const catalog = await readCatalog();
       const entry = catalog.find(entry => entry.id === saved.id);
       entry.person = person.trim();
@@ -416,7 +426,7 @@ ipcMain.handle('web:image-more', async (_event, query) => {
       await writeCatalog(catalog);
       return entry;
     });
-    return { ...item, folderName: folderId === 'downloads' ? 'Downloads' : path.basename(folderId) };
+    return { ...item, folderName: (folderId === 'local' || folderId === 'downloads') ? 'Local' : path.basename(folderId) };
   } catch (error) { await fs.rm(file, { force: true }); throw error; }
 });
 ipcMain.handle('web:image-copy', async (_event, url) => {
@@ -519,9 +529,9 @@ ipcMain.handle('web:myinstants-save', async (_event, { url, folderId }) => {
   const sound = myinstantsResults.get(url);
   if (!sound) throw new Error('Pesquise o som antes de salvá-lo.');
   const roots = await readFolders();
-  if (folderId !== 'downloads' && !roots.includes(folderId)) throw new Error('Pasta de destino inválida.');
-  const destination = folderId === 'downloads' ? mediaDirectory() : folderId;
-  if (folderId !== 'downloads' && !(await fs.stat(destination).catch(() => null))?.isDirectory()) throw new Error('Pasta de destino indisponível.');
+  if (folderId !== 'local' && folderId !== 'downloads' && !roots.includes(folderId)) throw new Error('Pasta de destino inválida.');
+  const destination = (folderId === 'local' || folderId === 'downloads') ? mediaDirectory() : folderId;
+  if (folderId !== 'local' && folderId !== 'downloads' && !(await fs.stat(destination).catch(() => null))?.isDirectory()) throw new Error('Pasta de destino indisponível.');
   const response = await fetch(sound.url, { signal: AbortSignal.timeout(30000), headers: { 'User-Agent': 'Ribbit Frame' } });
   if (!response.ok || new URL(response.url).hostname !== 'www.myinstants.com') throw new Error('Não foi possível baixar o MP3.');
   if (Number(response.headers.get('content-length')) > 20000000) throw new Error('MP3 excede 20 MB.');
@@ -533,7 +543,7 @@ ipcMain.handle('web:myinstants-save', async (_event, { url, folderId }) => {
   const filename = (sound.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().slice(0, 90) || 'Efeito sonoro') + '.mp3';
   const file = path.join(destination, `${crypto.randomUUID().slice(0, 8)}-${filename}`);
   await fs.writeFile(file, bytes, { flag: 'wx' });
-  try { return await catalogOperation(() => addDownloaded(file, filename, sound.url, folderId === 'downloads' ? null : folderId)); }
+  try { return await catalogOperation(() => addDownloaded(file, filename, sound.url, (folderId === 'local' || folderId === 'downloads') ? null : folderId)); }
   catch (error) { await fs.rm(file, { force: true }); throw error; }
 });
 

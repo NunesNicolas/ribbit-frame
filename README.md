@@ -45,7 +45,9 @@ O aplicativo é distribuído para **Windows 10/11, 64 bits**. Quem instala a ver
 3. Use os filtros do explorador ou o painel de **Sorteio** para localizar uma mídia.
 4. Abra a prévia e copie a imagem ou o caminho do arquivo para seu fluxo de edição.
 
-Arquivos importados individualmente e downloads são armazenados nos dados do aplicativo. Pastas vinculadas continuam no lugar de origem. Se você mover uma pasta vinculada, o app pode deixar de encontrar seus arquivos.
+Arquivos importados individualmente e downloads são armazenados nos dados do aplicativo. A pasta padrão aparece como **Local**; ela reúne mídias importadas e downloads. Pastas vinculadas continuam no lugar de origem. Se você mover uma pasta vinculada, o app pode deixar de encontrar seus arquivos.
+
+Em **Configurações > Pastas catalogadas**, você pode desvincular uma pasta. Os arquivos originais permanecem no disco, mas as classificações dos itens dessa pasta saem do catálogo.
 
 ## Atualizações e dados
 
@@ -53,7 +55,7 @@ O Ribbit Frame verifica se há uma nova release ao iniciar a versão instalada. 
 
 O catálogo e os arquivos gerenciados pelo app ficam em `%APPDATA%\foreditor`. O instalador preserva esses dados durante atualizações e desinstalações. Faça uma cópia dessa pasta antes de trocar de computador ou limpar os dados do aplicativo. A integração de backup com Google Drive ainda não está implementada.
 
-Na primeira utilização de certos recursos, o app obtém ferramentas e modelos necessários, como yt-dlp, FFmpeg e o modelo de transcrição. Essas operações exigem conexão e espaço em disco. A transcrição em `large-v3-turbo` funciona localmente após a preparação inicial e pode consumir bastante RAM.
+Na primeira utilização de certos recursos, o app obtém ferramentas e modelos necessários, como yt-dlp, um runtime Node.js para o YouTube, FFmpeg e o modelo de transcrição. Essas operações exigem conexão e espaço em disco. A transcrição em `large-v3-turbo` funciona localmente após a preparação inicial e pode consumir bastante RAM.
 
 ## Desenvolver localmente
 

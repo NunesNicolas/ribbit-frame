@@ -54,9 +54,26 @@ async function executable(directory) {
   await fs.rename(temporary, file);
   return file;
 }
+const nodeRelease = 'https://nodejs.org/dist/v22.16.0/';
+async function nodeExecutable(directory) {
+  const file = path.join(directory, 'node-v22.16.0.exe');
+  try { await fs.access(file); return file; } catch {}
+  await fs.mkdir(directory, { recursive: true });
+  const [binary, sums] = await Promise.all([
+    fetchBytes(nodeRelease + 'win-x64/node.exe', 70000000, ['nodejs.org']),
+    fetchBytes(nodeRelease + 'SHASUMS256.txt', 100000, ['nodejs.org'])
+  ]);
+  const line = sums.data.toString().split(/\r?\n/).find(row => /\s+win-x64\/node\.exe$/.test(row));
+  const actual = crypto.createHash('sha256').update(binary.data).digest('hex');
+  if (!line || line.trim().split(/\s+/)[0].toLowerCase() !== actual) throw new Error('Verificação SHA-256 do runtime JavaScript falhou.');
+  const temporary = file + '.tmp';
+  await fs.writeFile(temporary, binary.data);
+  await fs.rename(temporary, file);
+  return file;
+}
 function run(exe, args, progress = () => {}, capture = true) {
   return new Promise((resolve, reject) => {
-    const child = spawn(exe, ['--no-playlist', '--no-config', '--no-update', ...args], { windowsHide: true });
+    const child = spawn(exe, ['--no-playlist', '--no-config', '--no-update', ...args], { cwd: path.dirname(exe), env: { ...process.env, TEMP: path.dirname(exe), TMP: path.dirname(exe) }, windowsHide: true });
     let output = '', errors = '';
     const timer = setTimeout(() => child.kill(), capture ? 300000 : 3600000);
     child.stdout.on('data', chunk => { if (capture) { output += chunk; if (output.length > 3000000) child.kill(); } progress(String(chunk)); });
@@ -66,7 +83,7 @@ function run(exe, args, progress = () => {}, capture = true) {
   });
 }
 async function formats(url, directory) {
-  const info = JSON.parse(await run(await executable(directory), ['--dump-single-json', '--skip-download', safeUrl(url, ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'])]));
+  const info = JSON.parse(await run(await executable(directory), ['--js-runtimes', 'node:' + await nodeExecutable(directory), '--dump-single-json', '--skip-download', safeUrl(url, ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'])]));
   const thumbnail = [info.thumbnail, ...(info.thumbnails || []).map(item => item.url)].reverse().find(value => { try { const url = new URL(value); return url.protocol === 'https:' && (url.hostname === 'i.ytimg.com' || url.hostname === 'img.youtube.com' || /^i[0-9]\.ytimg\.com$/.test(url.hostname)); } catch { return false; } });
   return { title: info.title, thumbnail: thumbnail || null, options: formatOptions(info) };
 }
@@ -99,7 +116,7 @@ async function download(url, formatId, directory, destination, progress) {
   await fs.mkdir(destination, { recursive: true });
   const prefix = crypto.randomUUID();
   try {
-    const args = ['--no-part', '-f', selected.audioOnly ? 'bestaudio' : formatId, '-o', path.join(destination, prefix + '.%(ext)s'), '--newline'];
+    const args = ['--js-runtimes', 'node:' + await nodeExecutable(directory), '--no-part', '-f', selected.audioOnly ? 'bestaudio' : formatId, '-o', path.join(destination, prefix + '.%(ext)s'), '--newline'];
     if (ffmpegDirectory) args.push('--ffmpeg-location', ffmpegDirectory);
     if (selected.audioOnly) args.push('-x', '--audio-format', selected.ext);
     else if (selected.merged) args.push('--merge-output-format', selected.ext);

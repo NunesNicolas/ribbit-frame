@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('forEditor', Object.freeze({
   onUpdateProgress: (callback) => { const listener = (_event, value) => callback(value); ipcRenderer.on('update:progress', listener); return () => ipcRenderer.removeListener('update:progress', listener); },
   listMedia: (force = false) => ipcRenderer.invoke('media:list', force),
   listFolders: () => ipcRenderer.invoke('media:folders'),
+  removeFolder: (root) => ipcRenderer.invoke('media:remove-folder', root),
   chooseDestination: () => ipcRenderer.invoke('media:choose-destination'),
   listPeople: () => ipcRenderer.invoke('people:list'),
   listTaxonomy: () => ipcRenderer.invoke('taxonomy:list'),
